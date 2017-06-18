@@ -1,6 +1,8 @@
 use std::fmt;
 use std::cmp::Ordering;
 use std::collections::HashSet;
+use std::collections::BTreeMap;
+use std::string::ToString;
 
 
 /* STRUCTS */
@@ -14,19 +16,17 @@ pub struct Coin {
 
 /// This is just used to keep a count of how many of each coin type
 /// are needed to create me in this combination.
-#[derive(Copy, Clone, Eq, Hash)]
+#[derive(Eq, Hash)]
 pub struct CoinList {
-    isempty: bool,
-    oneps: u32,
-    twops: u32,
-    fivps: u32,
-    tenps: u32,
-    tweps: u32,
-    fifps: u32,
-    onehs: u32,
-    twohs: u32,
+    is_empty: bool,
+    counts: BTreeMap<u32, CoinCount>,   // using BTreeMap because it implements hash, which we want for our hashset of CoinLists
 }
 
+#[derive(Copy, Clone, Eq, Hash)]
+pub struct CoinCount {
+    value: u32,
+    count: u32,
+}
 
 
 
@@ -54,7 +54,7 @@ impl Coin {
                 }
             }
 
-            if !combination.isempty {
+            if !combination.is_empty {
                 println!("{}", combination);
                 self.shallow_combinations.push(combination);
             }
@@ -101,20 +101,11 @@ impl CoinList {
     }
 
     pub fn add_coins(&mut self, how_many: u32, value: u32){
-        self.isempty = false;
-        match value {
-            1 => self.oneps += how_many,
-            2 => self.twops += how_many,
-            5 => self.fivps += how_many,
-            10 => self.tenps += how_many,
-            20 => self.tweps += how_many,
-            50 => self.fifps += how_many,
-            100 => self.onehs += how_many,
-            200 => self.twohs += how_many,
-            _ => {
-                self.isempty = true;
-                println!("Invalid coin value {}", value)
-            }
+        self.is_empty = false;
+
+        match self.counts.get_mut(&value) {
+            Some(coin_count) => coin_count.count += how_many,
+            None => println!("Invalid coin value {}", value)
         };
     }
 
@@ -176,30 +167,71 @@ impl fmt::Display for Coin {
 
 impl Default for CoinList {
     fn default () -> CoinList {
-        CoinList {
-            isempty: true,
-            oneps: 0,
-            twops: 0,
-            fivps: 0,
-            tenps: 0,
-            tweps: 0,
-            fifps: 0,
-            onehs: 0,
-            twohs: 0,
+        let mut new_list = CoinList {
+            is_empty: true,
+            counts: BTreeMap::new(),
+        };
+
+        new_list.counts.insert(200,   CoinCount {value: 200, count: 0});
+        new_list.counts.insert(100,   CoinCount {value: 100, count: 0});
+        new_list.counts.insert(50,    CoinCount {value: 50, count: 0});
+        new_list.counts.insert(20,    CoinCount {value: 20, count: 0});
+        new_list.counts.insert(10,    CoinCount {value: 10, count: 0});
+        new_list.counts.insert(5,     CoinCount {value: 5, count: 0});
+        new_list.counts.insert(2,     CoinCount {value: 2, count: 0});
+        new_list.counts.insert(1,     CoinCount {value: 1, count: 0});
+
+        new_list
+    }
+}
+
+impl Clone for CoinList {
+    fn clone(&self) -> CoinList {
+        let mut clone = CoinList::new();
+        clone.is_empty = self.is_empty;
+
+        for (key, value) in self.counts.iter() {
+            clone.counts.insert(key.clone(), value.clone());
         }
+        clone
     }
 }
 
 impl PartialEq for CoinList {
     fn eq(&self, other: &CoinList) -> bool {
-        self.oneps == other.oneps
-        && self.twops == other.twops
-        && self.fivps == other.fivps
-        && self.tenps == other.tenps
-        && self.tweps == other.tweps
-        && self.fifps == other.fifps
-        && self.onehs == other.onehs
-        && self.twohs == other.twohs
+        let mut eq = self.is_empty == other.is_empty;
+        if eq {
+            for (key, coin_count) in self.counts.iter() {
+                if let Some(other_count) = other.counts.get(&key) {
+                    eq = coin_count.eq(other_count);
+                    if !eq {
+                        break;
+                    }
+                }
+            }
+        }
+
+        eq
+    }
+}
+
+impl fmt::Display for CoinCount {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
+        let mut message = String::from("");
+        match self.value {
+            200 =>  { message.push_str(&(self.count.to_string()[..])); message.push_str("x£2"); }
+            100 => { message.push_str(&(self.count.to_string()[..])); message.push_str("x£1"); }
+            50 => { message.push_str(&(self.count.to_string()[..])); message.push_str("x50p"); }
+            20 => { message.push_str(&(self.count.to_string()[..])); message.push_str("x20p"); }
+            10 => { message.push_str(&(self.count.to_string()[..])); message.push_str("x10p"); }
+            5 => { message.push_str(&(self.count.to_string()[..])); message.push_str("x5p"); }
+            2 => { message.push_str(&(self.count.to_string()[..])); message.push_str("x2p"); }
+            1 => { message.push_str(&(self.count.to_string()[..])); message.push_str("x1p"); }
+            _ => message.push_str("Invalid CoinCount"),
+        }
+
+        write!(f, "{}", message)
     }
 }
 
@@ -207,57 +239,31 @@ impl fmt::Display for CoinList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 
         let mut message = String::new();
-        let mut empty = true;
 
-        if self.twohs > 0 {
-            message.push_str(&(self.twohs.to_string()));
-            message.push_str("x£2, ");
-            empty = false;
-        }
-        if self.onehs > 0 {
-            message.push_str(&(self.onehs.to_string()));
-            message.push_str("x£1, ");
-            empty = false;
-        }
-        if self.fifps > 0 {
-            message.push_str(&(self.fifps.to_string()));
-            message.push_str("x50p, ");
-            empty = false;
-        }
-        if self.tweps > 0 {
-            message.push_str(&(self.tweps.to_string()));
-            message.push_str("x20p, ");
-            empty = false;
-        }
-        if self.tenps > 0 {
-            message.push_str(&(self.tenps.to_string()));
-            message.push_str("x10p, ");
-            empty = false;
-        }
-        if self.fivps > 0 {
-            message.push_str(&(self.fivps.to_string()));
-            message.push_str("x5p, ");
-            empty = false;
-        }
-        if self.twops > 0 {
-            message.push_str(&(self.twops.to_string()));
-            message.push_str("x2p, ");
-            empty = false;
-        }
-        if self.oneps > 0 {
-            message.push_str(&(self.oneps.to_string()));
-            message.push_str("x1p, ");
-            empty = false;
+        for (key, coin_count) in self.counts.iter() {
+            if message.len() > 0 {
+                message.push_str(", ");
+            }
+            message.push_str(&(coin_count.to_string()[..]));
         }
 
-        if empty {
+        if message.len() <= 0 {
             message.push_str("Empty CoinList");
 
-            if !self.isempty {
+            if !self.is_empty {
                 message.push_str("ERROR! Empty CoinList marked as not empty!");
             }
         }
 
         write!(f, "{}", message)
+    }
+}
+
+
+
+impl PartialEq for CoinCount {
+    fn eq(&self, other: &CoinCount) -> bool {
+        self.value == other.value
+        && self.count == other.count
     }
 }
