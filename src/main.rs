@@ -34,6 +34,19 @@ fn main()
         let mut coin = coins2.pop().expect("Empty vector!");
         println!("\n{}", coin);
         coin.calc_replacement_combos(&coins1);
+        println!("Combinations: {}", coin.recursive_combinations.len() + 1);    // + 1 is for self. I.e. 1x£2 is valid, but not included in calculation
+        print_combos(&coin);
         coins1.push(coin);
+    }
+}
+
+fn print_combos(coin: &Coin)
+{
+    if coin.value > 20 {
+        return;
+    }
+
+    for combo in coin.recursive_combinations.iter() {
+        println!("{}", combo);
     }
 }

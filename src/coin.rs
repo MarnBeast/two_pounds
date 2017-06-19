@@ -5,21 +5,22 @@ use std::collections::BTreeMap;
 use std::string::ToString;
 
 
+
 /* STRUCTS */
 
 #[derive(Eq)]
 pub struct Coin {
-    value: u32,
-    shallow_combinations: Vec<CoinList>,
-    recursive_combinations: HashSet<CoinList>,
+    pub value: u32,
+    shallow_combinations: Vec<CoinCombination>,
+    pub recursive_combinations: HashSet<CoinCombination>,
 }
 
 /// This is just used to keep a count of how many of each coin type
 /// are needed to create me in this combination.
 #[derive(Eq, Hash)]
-pub struct CoinList {
+pub struct CoinCombination {
     is_empty: bool,
-    counts: BTreeMap<u32, CoinCount>,   // using BTreeMap because it implements hash, which we want for our hashset of CoinLists
+    counts: BTreeMap<u32, CoinCount>,   // using BTreeMap because it implements hash, which we want for our hashset of CoinCombination
 }
 
 #[derive(Copy, Clone, Eq, Hash)]
@@ -44,13 +45,14 @@ impl Coin {
             let times = self.value / coin.value;
             let remainder = self.value % coin.value;
 
-            let mut combination = CoinList::new();
+            let mut combination = CoinCombination::new();
 
             if times > 0 {
                 combination.add_coins(times, coin.value);
 
                 if remainder > 0 {
-                    combination.calc_combination(remainder, &coins[i..]);       // We don't need the whole thing checked, just the things smaller than our current coin
+                    // We don't need the whole thing checked, just the things smaller than our current coin
+                    combination.calc_combination(remainder, &coins[..i]);   // we're going small to big
                 }
             }
 
@@ -65,39 +67,36 @@ impl Coin {
     {
         for combo in self.shallow_combinations.iter() {
             let copy = combo.clone();
+            //println!("{}", copy);
             self.recursive_combinations.insert(copy);
         }
 
-        // for each of the coins smaller than us (those passed in here are smaller than us)
-        // for each of that smaller coins combos, create a new combo for each of our combos.
+        // for each of our shallow combinations,
+        // for each of the coin counts in that combination
+        // for each coin in the replacements list
+        //   if the coin matches the coin count
+        //      make a copy of the
 
-//        for self_combo in self.shallow_combinations.iter() {
-//            for coin in coins.iter() {
-//                for combo in coin.shallow_combinations.iter() {
-//                    let new_combo = self_combo.clone();
-//                    match value {
-//                        1 => new_combo.oneps -= 1,
-//                        2 => new_combo.twops -= 1,
-//                        5 => new_combo.fivps -= 1,
-//                        10 => new_combo.tenps -= 1,
-//                        20 => new_combo.tweps -= 1,
-//                        50 => new_combo.fifps -= 1,
-//                        100 => new_combo.onehs -= 1,
-//                        200 => new_combo.twohs -= 1,
-//                        _ => {
-//                            println!("Invalid coin value {}", value)
-//                        }
-//                    };
-//                }
+        for shallow_combo in self.shallow_combinations.iter() {         // shallow_combo is a CoinCombination
+//            for (_, shallow_count) in shallow_combo.counts.iter() {     // shallow_count is a CoinCount
+                for replace_coin in coins.iter() {                      // replace_coin is a Coin
+
+                    // if the coin matches one of the coins in our shallow_combo, it means we can
+                    // make more combos by copying this one and one by one replacing counts of our
+                    // replace coin value with counts in the replace coin's recursive_combinations.
+//                    if shallow_count.value == replace_coin.value {
+                        shallow_combo.calc_replacement_combos(replace_coin, &mut self.recursive_combinations);
+//                    }
+
+                }
 //            }
-//        }
-
+        }
     }
 }
 
-impl CoinList {
-    pub fn new() -> CoinList {
-        CoinList {..Default::default() }
+impl CoinCombination {
+    pub fn new() -> CoinCombination {
+        CoinCombination {..Default::default() }
     }
 
     pub fn add_coins(&mut self, how_many: u32, value: u32){
@@ -126,6 +125,53 @@ impl CoinList {
 
                 // Once we've found something that can divide our remainder
                 break;
+            }
+        }
+    }
+
+
+    /// This method makes a copy of its CoinCombination and then modifies that copy by splitting one
+    /// of its combination counts matching the passed in "coin_from" coin value. The new combo is
+    /// then added to the "coin_to" Coin's recursive_combinations if it didn't already exist in the
+    /// set.
+    /// Furthermore, if the new CoinCombination didn't exist, it will have calc_replacement_combos
+    /// called on it in order to attempt to split it up further.
+    ///
+    /// So if the passed in coin_from was 5p, the new CoinCombination would have 1 less 5p and have
+    /// its other combination counts incremented based on the first combination in the 5p coin's
+    /// recursive_combinations set. It would then call this method again on the new combo as long as
+    /// there's more 5p pieces to potentially split up.
+    pub fn calc_replacement_combos(&self, coin_from: &Coin, coin_to_recursive_combinations: &mut HashSet<CoinCombination>)
+    {
+        for combo_from in coin_from.recursive_combinations.iter() {
+            let mut combo_new = self.clone();
+            let keep_going;
+
+            // Get the count matching the coin_from value. So if coin_from was 5p, we want the 5p count.
+            {   // using scope braces to release coin_count's ownership of combo_new
+                let mut coin_count = combo_new.counts.get_mut(&coin_from.value).expect("NOT FOUND");
+                if coin_count.count == 0 {
+                    return; // we can't split this up
+                }
+                coin_count.count -= 1;  // because we're taking that 1 denomination, and splitting it.
+                keep_going = coin_count.count > 0;
+            }
+            // go through the combo getting the count of each coin type, and increment our new combo's
+            // counts to match those.
+            for (_, count_from) in combo_from.counts.iter() {
+                let mut count_new = combo_new.counts.get_mut(& count_from.value).expect("NOT FOUND 2");
+                count_new.count += count_from.count;
+            }
+
+            // If the resultant new combination does not already exist in our recursive_combinations
+            // list, we want to add it and then see if this new combo can be broken down further.
+            if !coin_to_recursive_combinations.contains(&combo_new)
+            && keep_going {
+
+                // Insert a clone of the new combo so we can continue working off of it after insert.
+                coin_to_recursive_combinations.insert(combo_new.clone());
+                //println!("{}", combo_new);
+                combo_new.calc_replacement_combos(&coin_from, coin_to_recursive_combinations);
             }
         }
     }
@@ -165,9 +211,9 @@ impl fmt::Display for Coin {
 }
 
 
-impl Default for CoinList {
-    fn default () -> CoinList {
-        let mut new_list = CoinList {
+impl Default for CoinCombination {
+    fn default () -> CoinCombination {
+        let mut new_list = CoinCombination {
             is_empty: true,
             counts: BTreeMap::new(),
         };
@@ -185,9 +231,9 @@ impl Default for CoinList {
     }
 }
 
-impl Clone for CoinList {
-    fn clone(&self) -> CoinList {
-        let mut clone = CoinList::new();
+impl Clone for CoinCombination {
+    fn clone(&self) -> CoinCombination {
+        let mut clone = CoinCombination::new();
         clone.is_empty = self.is_empty;
 
         for (key, value) in self.counts.iter() {
@@ -197,8 +243,8 @@ impl Clone for CoinList {
     }
 }
 
-impl PartialEq for CoinList {
-    fn eq(&self, other: &CoinList) -> bool {
+impl PartialEq for CoinCombination {
+    fn eq(&self, other: &CoinCombination) -> bool {
         let mut eq = self.is_empty == other.is_empty;
         if eq {
             for (key, coin_count) in self.counts.iter() {
@@ -235,23 +281,25 @@ impl fmt::Display for CoinCount {
     }
 }
 
-impl fmt::Display for CoinList {
+impl fmt::Display for CoinCombination {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 
         let mut message = String::new();
 
-        for (key, coin_count) in self.counts.iter() {
-            if message.len() > 0 {
-                message.push_str(", ");
+        for (_, coin_count) in self.counts.iter() {
+            if coin_count.count > 0 {
+                if message.len() > 0 {
+                    message.push_str(", ");
+                }
+                message.push_str(&(coin_count.to_string()[..]));
             }
-            message.push_str(&(coin_count.to_string()[..]));
         }
 
         if message.len() <= 0 {
-            message.push_str("Empty CoinList");
+            message.push_str("Empty CoinCombination");
 
             if !self.is_empty {
-                message.push_str("ERROR! Empty CoinList marked as not empty!");
+                message.push_str("ERROR! Empty CoinCombination marked as not empty!");
             }
         }
 
