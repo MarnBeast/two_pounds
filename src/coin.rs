@@ -67,7 +67,7 @@ impl Coin {
     {
         for combo in self.shallow_combinations.iter() {
             let copy = combo.clone();
-            //println!("{}", copy);
+//            println!("{}", copy);
             self.recursive_combinations.insert(copy);
         }
 
@@ -78,9 +78,9 @@ impl Coin {
         //      make a copy of the
 
         for shallow_combo in self.shallow_combinations.iter() {         // shallow_combo is a CoinCombination
-//            for (_, shallow_count) in shallow_combo.counts.iter() {     // shallow_count is a CoinCount
+//            for (_, shallow_count) in shallow_combo.counts.iter() {   // shallow_count is a CoinCount
                 for replace_coin in coins.iter() {                      // replace_coin is a Coin
-
+//                    println!("{}", replace_coin);
                     // if the coin matches one of the coins in our shallow_combo, it means we can
                     // make more combos by copying this one and one by one replacing counts of our
                     // replace coin value with counts in the replace coin's recursive_combinations.
@@ -170,8 +170,11 @@ impl CoinCombination {
 
                 // Insert a clone of the new combo so we can continue working off of it after insert.
                 coin_to_recursive_combinations.insert(combo_new.clone());
-                //println!("{}", combo_new);
+//                println!("{}", combo_new);
                 combo_new.calc_replacement_combos(&coin_from, coin_to_recursive_combinations);
+            }
+            else {
+                coin_to_recursive_combinations.insert(combo_new.clone());
             }
         }
     }
